@@ -1,0 +1,33 @@
+- name: Stop Spark services on master
+  hosts: master
+  become: true
+  gather_facts: no
+  tasks:
+    - name: Stop Spark master
+      shell: |
+        /opt/spark/sbin/stop-master.sh
+      args:
+        executable: /bin/bash
+      register: stop_master
+
+    - name: Debug Spark master stop status
+      debug:
+        msg: "Spark master stopped successfully."
+      when: stop_master is succeeded
+
+- name: Stop Spark services on workers
+  hosts: workers
+  become: true
+  gather_facts: no
+  tasks:
+    - name: Stop Spark worker
+      shell: |
+        /opt/spark/sbin/stop-worker.sh
+      args:
+        executable: /bin/bash
+      register: stop_worker
+
+    - name: Debug Spark worker stop status
+      debug:
+        msg: "Spark worker on {{ inventory_hostname }} stopped successfully."
+      when: stop_worker is succeeded

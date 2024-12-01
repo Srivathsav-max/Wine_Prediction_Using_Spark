@@ -1,0 +1,131 @@
+---
+# Configure and start Spark master
+- hosts: master
+  become: true
+  gather_facts: yes
+  tasks:
+    - name: Get master node IP
+      set_fact:
+        master_ip: "{{ ansible_default_ipv4.address }}"
+        master_public_ip: "{{ ansible_ssh_host | default(ansible_host) }}"
+
+    - name: Configure Spark master
+      blockinfile:
+        path: /opt/spark/conf/spark-env.sh
+        create: yes
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - MASTER CONFIG"
+        block: |
+          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          export SPARK_MASTER_HOST=0.0.0.0
+          export SPARK_MASTER_PORT=7077
+          export SPARK_MASTER_WEBUI_PORT=8080
+          export SPARK_PUBLIC_DNS={{ master_public_ip }}
+          export SPARK_WORKER_CORES=4
+          export SPARK_WORKER_MEMORY=12g
+
+    - name: Stop any existing Spark master
+      shell: |
+        if pgrep -f "org.apache.spark.deploy.master.Master"; then
+          /opt/spark/sbin/stop-master.sh
+          sleep 5
+        fi
+      args:
+        executable: /bin/bash
+
+    - name: Start Spark master
+      shell: |
+        source /etc/profile.d/spark.sh
+        /opt/spark/sbin/start-master.sh
+      args:
+        executable: /bin/bash
+
+    - name: Wait for master port
+      wait_for:
+        port: 7077
+        state: started
+        timeout: 30
+        host: "{{ master_ip }}"
+
+    - name: Wait for WebUI port
+      wait_for:
+        port: 8080
+        state: started
+        timeout: 30
+        host: "{{ master_ip }}"
+
+    - name: Display master status
+      shell: |
+        /opt/spark/sbin/spark-daemon.sh status org.apache.spark.deploy.master.Master 1
+      register: master_status
+      changed_when: false
+
+    - name: Show master status
+      debug:
+        msg: "Master Status: {{ master_status.stdout }}"
+
+    - name: Show Spark WebUI access information
+      debug:
+        msg: "Spark WebUI should be accessible at: http://{{ master_public_ip }}:8080"
+
+# Configure and start Spark workers
+- hosts: workers
+  become: true
+  gather_facts: yes
+  tasks:
+    - name: Configure Spark workers
+      blockinfile:
+        path: /opt/spark/conf/spark-env.sh
+        create: yes
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - WORKER CONFIG"
+        block: |
+          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          export SPARK_MASTER_HOST={{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}
+          export SPARK_PUBLIC_DNS={{ ansible_default_ipv4.address }}
+          export SPARK_WORKER_CORES=4
+          export SPARK_WORKER_MEMORY=12g
+          export SPARK_WORKER_OPTS="-Dspark.worker.cleanup.enabled=true -Dspark.worker.cleanup.interval=30 -Dspark.worker.cleanup.appDataTtl=604800"
+
+    - name: Stop any existing Spark worker
+      shell: |
+        if pgrep -f "org.apache.spark.deploy.worker.Worker"; then
+          /opt/spark/sbin/stop-worker.sh
+          sleep 5
+        fi
+      args:
+        executable: /bin/bash
+
+    - name: Start Spark worker
+      shell: |
+        source /etc/profile.d/spark.sh
+        /opt/spark/sbin/start-worker.sh spark://{{ hostvars[groups['master'][0]]['master_ip'] }}:7077
+      args:
+        executable: /bin/bash
+
+    - name: Wait for worker port
+      wait_for:
+        port: 8081
+        state: started
+        timeout: 30
+        host: "{{ ansible_default_ipv4.address }}"
+
+    - name: Display worker status
+      shell: |
+        /opt/spark/sbin/spark-daemon.sh status org.apache.spark.deploy.worker.Worker 1
+      register: worker_status
+      changed_when: false
+
+    - name: Show worker status
+      debug:
+        msg: "Worker Status: {{ worker_status.stdout }}"
+
+    - name: Verify worker connection to master
+      uri:
+        url: "http://{{ hostvars[groups['master'][0]]['master_ip'] }}:8080"
+        return_content: yes
+      register: master_ui
+      changed_when: false
+
+    - name: Show connection status
+      debug:
+        msg: "Worker successfully connected to master"
+      when: master_ui.status == 200

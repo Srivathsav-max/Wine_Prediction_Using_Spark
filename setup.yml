@@ -1,0 +1,402 @@
+---
+# First play: Set default variables
+- name: Set default variables
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Set delete_existing_setup default to no
+      set_fact:
+        delete_existing_setup: no
+
+# Second play: Generate SSH keys on workers
+- hosts: workers
+  become: true
+  gather_facts: yes
+  vars:
+    ssh_key_file: "/home/{{ ansible_user }}/.ssh/id_rsa"
+  tasks:
+    - name: Generate SSH key on workers if not present
+      openssh_keypair:
+        path: "{{ ssh_key_file }}"
+        type: rsa
+        size: 2048
+        force: no
+      become: false
+
+    - name: Read worker's public key
+      slurp:
+        src: "{{ ssh_key_file }}.pub"
+      register: worker_public_key
+      become: false
+
+# Third play: Setup master node
+- hosts: master
+  become: true
+  gather_facts: yes
+  vars:
+    ssh_key_file: "/home/{{ ansible_user }}/.ssh/id_rsa"
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade system
+      apt:
+        upgrade: dist
+
+    - name: Install required packages
+      apt:
+        name:
+          - openjdk-11-jdk
+          - docker.io
+          - maven
+          - wget
+          - curl
+          - tar
+          - rsync
+        state: present
+
+    - name: Get the default Python 3 version
+      shell: "python3 -V | cut -d ' ' -f 2 | cut -d '.' -f1,2"
+      register: python_version
+      changed_when: false
+
+    - name: Install pip3 and python3-venv on master
+      apt:
+        name:
+          - python3-pip
+          - "python{{ python_version.stdout }}-venv"
+        state: present
+
+    - name: Generate SSH key on master if not present
+      openssh_keypair:
+        path: "{{ ssh_key_file }}"
+        type: rsa
+        size: 2048
+        force: no
+      become: false
+
+    - name: Read master's public key
+      slurp:
+        src: "{{ ssh_key_file }}.pub"
+      register: master_public_key
+      become: false
+
+    - name: Add master's public key to workers
+      authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ master_public_key['content'] | b64decode }}"
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['workers'] }}"
+
+    - name: Add workers' public keys to master
+      authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ hostvars[item]['worker_public_key']['content'] | b64decode }}"
+      with_items: "{{ groups['workers'] }}"
+
+    - name: Test SSH connectivity to workers
+      shell: "ssh -o StrictHostKeyChecking=no {{ ansible_user }}@{{ hostvars[item]['ansible_host'] }} 'echo SSH connection successful'"
+      register: ssh_test
+      changed_when: false
+      become: false
+      with_items: "{{ groups['workers'] }}"
+
+    - name: Check if Spark is already installed
+      stat:
+        path: /opt/spark/bin/spark-shell
+      register: spark_installed
+
+    - name: Check if Spark tarball exists
+      stat:
+        path: /tmp/spark.tgz
+      register: spark_tarball
+
+    - name: Conditionally delete existing Spark setup
+      when: delete_existing_setup | bool
+      shell: |
+        echo "Deleting existing Spark setup..."
+        rm -rf /opt/spark /tmp/spark.tgz /tmp/spark-3.2.0-bin-hadoop3.2
+      args:
+        executable: /bin/bash
+
+    - name: Create Spark directory
+      file:
+        path: /opt/spark
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: not spark_installed.stat.exists or delete_existing_setup | bool
+
+    - name: Download Spark tarball
+      shell: |
+        echo "Downloading Spark..."
+        curl -# -o /tmp/spark.tgz https://archive.apache.org/dist/spark/spark-3.2.0/spark-3.2.0-bin-hadoop3.2.tgz
+        if [ ! -s /tmp/spark.tgz ]; then
+          echo "Download failed or file is empty"
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      when: >
+        (not spark_tarball.stat.exists or delete_existing_setup | bool) and
+        (not spark_installed.stat.exists or delete_existing_setup | bool)
+      retries: 3
+      delay: 10
+
+    - name: Validate Spark tarball
+      shell: tar -tzf /tmp/spark.tgz
+      args:
+        executable: /bin/bash
+      register: validate_tarball
+      failed_when: validate_tarball.rc != 0
+
+    - name: Extract Spark
+      unarchive:
+        src: /tmp/spark.tgz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Clean and prepare /opt/spark directory
+      file:
+        path: /opt/spark
+        state: "{{ item }}"
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      with_items:
+        - absent
+        - directory
+
+    - name: Move Spark to /opt directory
+      shell: |
+        echo "Moving Spark files to /opt/spark..."
+        cp -r /tmp/spark-3.2.0-bin-hadoop3.2/* /opt/spark/
+      args:
+        executable: /bin/bash
+
+    - name: Copy Spark tarball to workers using SCP
+      shell: |
+        scp -o StrictHostKeyChecking=no /tmp/spark.tgz {{ ansible_user }}@{{ hostvars[item]['ansible_host'] }}:/tmp/
+      become: false
+      with_items: "{{ groups['workers'] }}"
+      register: copy_result
+      ignore_errors: true
+
+    - name: Copy Spark tarball using rsync (fallback)
+      shell: |
+        rsync -avz --progress /tmp/spark.tgz {{ ansible_user }}@{{ hostvars[item]['ansible_host'] }}:/tmp/
+      become: false
+      with_items: "{{ groups['workers'] }}"
+      when: copy_result.failed is defined and copy_result.failed
+
+    - name: Set environment variables
+      blockinfile:
+        path: /etc/profile.d/spark.sh
+        create: yes
+        block: |
+          export SPARK_HOME=/opt/spark
+          export PATH=$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
+        mode: '0644'
+
+    - name: Check if virtual environment exists on master
+      stat:
+        path: /home/{{ ansible_user }}/spark_env/bin/activate
+      register: venv_master
+
+    - name: Create Python virtual environment on master
+      become: false
+      shell: |
+        python3 -m venv ~/spark_env
+      args:
+        executable: /bin/bash
+      when: not venv_master.stat.exists
+
+# Fourth play: Setup worker nodes
+- hosts: workers
+  become: true
+  gather_facts: yes
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade system
+      apt:
+        upgrade: dist
+
+    - name: Install required packages
+      apt:
+        name:
+          - openjdk-11-jdk
+          - docker.io
+          - maven
+          - wget
+          - tar
+          - rsync
+          - python-is-python3
+          - python3-pip
+          - python3.12-venv
+          - python3-full
+        state: present
+
+    - name: Check if Spark is already installed
+      stat:
+        path: /opt/spark/bin/spark-shell
+      register: worker_spark_installed
+
+    - name: Clean and prepare /opt/spark directory
+      file:
+        path: /opt/spark
+        state: "{{ item }}"
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      with_items:
+        - absent
+        - directory
+
+    - name: Validate Spark tarball
+      shell: tar -tzf /tmp/spark.tgz
+      args:
+        executable: /bin/bash
+      register: validate_worker_tarball
+      failed_when: validate_worker_tarball.rc != 0
+
+    - name: Extract Spark
+      unarchive:
+        src: /tmp/spark.tgz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Move Spark to /opt directory
+      shell: |
+        echo "Moving Spark files to /opt/spark..."
+        cp -r /tmp/spark-3.2.0-bin-hadoop3.2/* /opt/spark/
+      args:
+        executable: /bin/bash
+
+    - name: Set environment variables
+      blockinfile:
+        path: /etc/profile.d/spark.sh
+        create: yes
+        block: |
+          export SPARK_HOME=/opt/spark
+          export PATH=$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
+        mode: '0644'
+
+    - name: Check if virtual environment exists on workers
+      stat:
+        path: /home/{{ ansible_user }}/spark_env/bin/activate
+      register: venv_worker
+
+    - name: Create Python virtual environment on workers
+      become: false
+      shell: |
+        # Remove any existing venv
+        rm -rf ~/spark_env
+        # Create new venv
+        python3 -m venv ~/spark_env
+      args:
+        executable: /bin/bash
+      when: not venv_worker.stat.exists
+
+    # - name: Copy requirements.txt to workers
+    #   copy:
+    #     src: requirements.txt
+    #     dest: ~/requirements.txt
+    #   become: false
+
+    # - name: Install Python packages in virtual environment on workers
+    #   become: false
+    #   shell: |
+    #     source ~/spark_env/bin/activate && pip install -r ~/requirements.txt
+    #   args:
+    #     executable: /bin/bash
+
+# Fifth play: Configure and start Spark master
+- hosts: master
+  become: true
+  gather_facts: yes
+  tasks:
+    - name: Get master node IP
+      set_fact:
+        master_ip: "{{ ansible_default_ipv4.address }}"
+
+    - name: Configure Spark master
+      blockinfile:
+        path: /opt/spark/conf/spark-env.sh
+        create: yes
+        block: |
+          export SPARK_MASTER_HOST={{ master_ip }}
+          export SPARK_MASTER_PORT=7077
+          export SPARK_MASTER_WEBUI_PORT=8080
+
+    - name: Check if Spark master is already running
+      shell: pgrep -f "org.apache.spark.deploy.master.Master" || echo "not running"
+      register: master_status
+      changed_when: false
+
+    - name: Start Spark master if not running
+      shell: source /etc/profile.d/spark.sh && /opt/spark/sbin/start-master.sh
+      args:
+        executable: /bin/bash
+      when: master_status.stdout == "not running"
+
+    - name: Wait for master to start
+      wait_for:
+        port: 7077
+        timeout: 120
+      when: master_status.stdout == "not running"
+
+# Fifth play: Configure and start Spark workers
+- hosts: workers
+  become: true
+  gather_facts: yes
+  tasks:
+    - name: Configure Spark workers
+      blockinfile:
+        path: /opt/spark/conf/spark-env.sh
+        create: yes
+        block: |
+          export SPARK_MASTER_HOST={{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}
+          export SPARK_WORKER_CORES=2
+          export SPARK_WORKER_MEMORY=2g
+
+    - name: Check if Spark worker is already running
+      shell: pgrep -f "org.apache.spark.deploy.worker.Worker" || echo "not running"
+      register: worker_status
+      changed_when: false
+
+    - name: Debug worker status
+      debug:
+        msg: "Worker status: {{ worker_status.stdout }}"
+
+    - name: Debug worker status type
+      debug:
+        msg: "Worker status type: {{ worker_status.stdout | type_debug }}"
+
+    - name: Start Spark worker if not running
+      shell: source /etc/profile.d/spark.sh && /opt/spark/sbin/start-worker.sh spark://{{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}:7077
+      args:
+        executable: /bin/bash
+      when: worker_status.stdout | trim == "not running"
+
+    - name: Wait for worker to start
+      wait_for:
+        port: 8081
+        timeout: 30
+      when: worker_status.stdout | trim == "not running"
+
+    - name: Clean up temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /tmp/spark.tgz
+        - /tmp/spark-3.2.0-bin-hadoop3.2
