@@ -95,7 +95,7 @@ public class TrainAndPersistWineQualityDataModel {
         validationPredictions.select("features", "label", "prediction").show(5, false);
         printMetrics(validationPredictions);
 
-        // Save the model and predictions locally
+        // Save the model and predictions locally.
         try {
             logger.info("Saving predictions to: " + PREDICTIONS_PATH);
             validationPredictions.write()
