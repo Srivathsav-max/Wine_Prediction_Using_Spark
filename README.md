@@ -120,20 +120,12 @@ https://hub.docker.com/r/srivathsav03/wine_quality_prediction/tags
 
 **Building the Docker Image:**
 ```bash
-docker build -t my-wine-quality-image:latest .
+docker build -t wine-quality .
 ```
 
 **Running the Container:**
 ```bash
-docker run --rm \
-  --network spark-network \
-  -e AWS_ACCESS_KEY_ID=your_access_key \
-  -e AWS_SECRET_ACCESS_KEY=your_secret_key \
-  my-wine-quality-image:latest \
-  --class com.mlearning.spark.TrainAndPersistWineQualityDataModel \
-  --master spark://spark-master:7077 \
-  --packages org.apache.hadoop:hadoop-aws:3.2.0,com.amazonaws:aws-java-sdk-bundle:1.11.375 \
-  /app/wine-quality.jar
+docker run -e AWS_ACCESS_KEY_ID=access_key   -e AWS_SECRET_ACCESS_KEY=secret_key   -e AWS_REGION=us-east-1   -v $(pwd)/data:/app/data   -v $(pwd)/models:/app/models   wine-quality
 ```
 
 <img width="1083" alt="Screenshot 2024-12-09 at 1 32 28 AM" src="https://github.com/user-attachments/assets/0aa56dc6-6191-4e94-a6e9-92c5da7ba2b6">
