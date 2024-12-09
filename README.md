@@ -16,7 +16,7 @@ This project demonstrates how to train a Wine Quality Prediction ML model using 
 ### 1. Clone the Repository
 Clone the repository :
 ```bash
-[git clone repolink](https://github.com/Srivathsav-max/Wine_Prediction_Using_Spark.git)
+git clone https://github.com/Srivathsav-max/Wine_Prediction_Using_Spark.git
 ```
 You can do this locally or directly on the AWS master instance. For convenience, you can SCP (secure copy) the repository or simply re-clone it inside the AWS master instance after it's provisioned.
 
