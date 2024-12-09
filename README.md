@@ -99,6 +99,13 @@ This will:
 ### 7. Running in Docker
 A Dockerfile is included to run the same training and prediction processes inside a Docker container. This simplifies deployment and makes it easier to run the prediction application on a single EC2 instance without installing Spark locally.
 
+or
+
+You can use my public Docker Image
+```
+https://hub.docker.com/r/srivathsav03/wine_quality_prediction/tags
+```
+
 **Building the Docker Image:**
 ```bash
 docker build -t my-wine-quality-image:latest .
