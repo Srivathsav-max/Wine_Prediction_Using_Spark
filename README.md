@@ -20,6 +20,9 @@ git clone https://github.com/Srivathsav-max/Wine_Prediction_Using_Spark.git
 ```
 You can do this locally or directly on the AWS master instance. For convenience, you can SCP (secure copy) the repository or simply re-clone it inside the AWS master instance after it's provisioned.
 
+<img width="1908" alt="Screenshot 2024-12-08 at 11 25 51 PM" src="https://github.com/user-attachments/assets/35a5f6e1-3ce1-4e06-820a-331ff9993a4e">
+
+
 ### 2. Set Up the Spark Cluster with Ansible
 Ansible is used to set up the Spark environment across all 4 instances (1 master + 3 workers).
 
@@ -55,7 +58,10 @@ Before running the code, upload your training, validation, and test datasets to 
 
 - `TrainingDataset.csv`
 - `ValidationDataset.csv`
-  
+
+<img width="961" alt="Screenshot 2024-12-08 at 11 26 47 PM" src="https://github.com/user-attachments/assets/054be94d-3912-48fd-bb8b-d05d3e792fae">
+
+
 Replace these paths in the code if needed to point to your actual S3 locations. Also, update the code with your AWS credentials and S3 paths in the main files so the model can be saved and loaded correctly.
 
 ### 5. Building the Project
