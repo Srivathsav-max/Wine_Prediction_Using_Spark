@@ -9,7 +9,7 @@ This project demonstrates how to train a Wine Quality Prediction ML model using 
 - AWS Access Key and Secret Key for S3 access
 - Ansible installed on your local machine
 - Maven installed on the master node or locally if building before deployment
-- Docker (optional, if you plan to run the Dockerized version)
+- Docker 
 
 ## Steps
 
