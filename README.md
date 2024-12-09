@@ -136,6 +136,9 @@ docker run --rm \
   /app/wine-quality.jar
 ```
 
+<img width="1083" alt="Screenshot 2024-12-09 at 1 32 28 AM" src="https://github.com/user-attachments/assets/0aa56dc6-6191-4e94-a6e9-92c5da7ba2b6">
+
+
 Make sure you have created `spark-network` and your Spark master is accessible within that network. Also ensure `HOME` or ivy cache directory issues are resolved as discussed.
 
 ## Conclusion
