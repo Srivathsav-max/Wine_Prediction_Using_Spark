@@ -87,7 +87,11 @@ spark-submit \
 
 ### Output:
 <img width="1087" alt="Screenshot 2024-12-08 at 10 05 25 PM" src="https://github.com/user-attachments/assets/ef6a6bb1-bbea-46f6-b2a6-d60aa1f8b7e6">
+<img width="1081" alt="Screenshot 2024-12-08 at 11 20 59 PM" src="https://github.com/user-attachments/assets/c85ea3f1-0bff-47a2-850e-9357acd4863a">
 
+
+### Spark Session:
+<img width="1909" alt="Screenshot 2024-12-08 at 11 18 56 PM" src="https://github.com/user-attachments/assets/5a7986d4-8281-444e-b1c1-81d351b37ab3">
 
 
 This will:
@@ -105,6 +109,8 @@ You can use my public Docker Image
 ```
 https://hub.docker.com/r/srivathsav03/wine_quality_prediction/tags
 ```
+<img width="1907" alt="Screenshot 2024-12-08 at 11 20 12 PM" src="https://github.com/user-attachments/assets/a26a9610-422f-4398-aefd-61cae83ae481">
+
 
 **Building the Docker Image:**
 ```bash
