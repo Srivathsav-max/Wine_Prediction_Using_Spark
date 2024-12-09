@@ -11,7 +11,5 @@ spark-submit
   --conf spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
   --conf spark.hadoop.fs.s3a.impl.disable.cache=true
   --packages org.apache.hadoop:hadoop-aws:3.2.0,com.amazonaws:aws-java-sdk-bundle:1.11.375
-  --conf spark.executor.extraClassPath=/path/to/aws-java-sdk-bundle-1.11.375.jar
-  --conf spark.driver.extraClassPath=/path/to/aws-java-sdk-bundle-1.11.375.jar
   target/wine-quality-1.0-SNAPSHOT.jar
 ```
