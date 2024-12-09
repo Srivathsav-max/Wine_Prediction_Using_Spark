@@ -68,7 +68,7 @@ Replace these paths in the code if needed to point to your actual S3 locations. 
 On the master node (or locally, then transfer the files):
 ```bash
 cd wine_quality/wine-quality
-mvn clean package
+mvn clean package -DskipTests
 ```
 This will resolve all dependencies and produce the JAR file (e.g., `target/wine-quality-1.0-SNAPSHOT.jar`).
 
