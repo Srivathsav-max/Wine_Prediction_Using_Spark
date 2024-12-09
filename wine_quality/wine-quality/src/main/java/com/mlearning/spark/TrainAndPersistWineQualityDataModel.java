@@ -26,9 +26,10 @@ public class TrainAndPersistWineQualityDataModel {
     public static final Logger logger = LogManager.getLogger(TrainAndPersistWineQualityDataModel.class);
 
     // Define S3 paths (replace with your actual bucket and paths)
-    private static final String TRAINING_DATASET = "s3a://wine-quality-datasets/TrainingDataset.csv";
-    private static final String VALIDATION_DATASET = "s3a://wine-quality-datasets/ValidationDataset.csv";
-    private static final String MODEL_PATH = "s3a://wine-quality-datasets/LogisticRegressionModel/";
+    private static final String TRAINING_DATASET = "s3a://wine-datsets/Training_Dataset_with_Correct_Labels.csv";
+    private static final String VALIDATION_DATASET = "s3a://wine-datsets/Validation_Dataset_with_Correct_Labels.csv";
+    private static final String MODEL_PATH = "models/LogisticRegressionModel/";
+    private static final String PREDICTIONS_PATH = "data/predictions/";
 
     public static void main(String[] args) {
         // Set logging levels to reduce verbosity
@@ -94,13 +95,19 @@ public class TrainAndPersistWineQualityDataModel {
         validationPredictions.select("features", "label", "prediction").show(5, false);
         printMetrics(validationPredictions);
 
-        // Save the model to S3
+        // Save the model and predictions locally
         try {
+            logger.info("Saving predictions to: " + PREDICTIONS_PATH);
+            validationPredictions.write()
+                .mode("overwrite")
+                .parquet(PREDICTIONS_PATH);
+            logger.info("Predictions saved successfully.");
+
             logger.info("Saving the trained model to: " + MODEL_PATH);
             model.write().overwrite().save(MODEL_PATH);
             logger.info("Model saved successfully.");
         } catch (IOException e) {
-            logger.error("Failed to save the model: ", e);
+            logger.error("Failed to save the model or predictions: ", e);
             e.printStackTrace();
         }
     }
