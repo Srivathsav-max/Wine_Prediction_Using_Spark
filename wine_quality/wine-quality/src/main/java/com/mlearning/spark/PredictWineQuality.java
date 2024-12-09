@@ -20,8 +20,9 @@ public class PredictWineQuality {
     public static final Logger logger = LogManager.getLogger(PredictWineQuality.class);
 
     // Define S3 paths (replace with your actual bucket and paths)
-    private static final String TESTING_DATASET = "s3a://wine-quality-datasets/TestDataset.csv";
-    private static final String MODEL_PATH = "s3a://wine-quality-datasets/LogisticRegressionModel";
+    private static final String TESTING_DATASET = "s3a://wine-datsets/Validation_Dataset_with_Correct_Labels.csv";
+    private static final String MODEL_PATH = "models/LogisticRegressionModel";
+    private static final String PREDICTIONS_PATH = "data/test_predictions/";
 
     public static void main(String[] args) {
         // Set logging levels to reduce verbosity
@@ -54,11 +55,15 @@ public class PredictWineQuality {
         logger.info("Making predictions on test data");
         Dataset<Row> predictionDF = pipelineModel.transform(testDf).cache();
 
-        // Show some predictions
-        predictionDF.select("features", "label", "prediction").show(5, false);
+        // Save test predictions to Parquet
+        logger.info("Saving test predictions to: " + PREDICTIONS_PATH);
+        predictionDF.write()
+            .mode("overwrite")
+            .parquet(PREDICTIONS_PATH);
+        logger.info("Test predictions saved successfully.");
 
-        // Evaluate metrics
-        logger.info("Evaluating predictions");
+        // Show some predictions and evaluate metrics
+        predictionDF.select("features", "label", "prediction").show(5, false);
         printMetrics(predictionDF);
     }
 
